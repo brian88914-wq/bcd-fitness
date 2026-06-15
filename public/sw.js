@@ -1,4 +1,4 @@
-const CACHE = 'bcd-fitness-v1'
+const CACHE = 'bcd-fitness-v2'
 const ASSETS = ['/bcd-fitness/', '/bcd-fitness/index.html']
 
 self.addEventListener('install', e => {
