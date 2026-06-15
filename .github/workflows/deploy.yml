@@ -17,11 +17,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: cd bcd-fitness && npm install
-      - run: cd bcd-fitness && npm run build
+      - run: npm install
+      - run: npm run build
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: bcd-fitness/dist
+          path: dist
       - uses: actions/deploy-pages@v4
         id: deployment
