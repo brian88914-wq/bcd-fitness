@@ -1,0 +1,15 @@
+{
+  "name": "身形日誌 bcd fitness",
+  "short_name": "身形日誌",
+  "description": "體重、飲食、運動一體化追蹤",
+  "start_url": "/bcd-fitness/",
+  "scope": "/bcd-fitness/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#EDE9E3",
+  "theme_color": "#EDE9E3",
+  "icons": [
+    { "src": "/bcd-fitness/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/bcd-fitness/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
