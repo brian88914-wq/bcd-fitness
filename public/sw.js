@@ -1,4 +1,4 @@
-const CACHE = 'bcd-fitness-v2'
+const CACHE = 'bcd-fitness-v3'
 const ASSETS = ['/bcd-fitness/', '/bcd-fitness/index.html']
 
 self.addEventListener('install', e => {
@@ -12,6 +12,8 @@ self.addEventListener('activate', e => {
 })
 
 self.addEventListener('fetch', e => {
+  // 不攔截 API 請求
+  if (e.request.url.includes('api.anthropic.com')) return;
   e.respondWith(
     fetch(e.request).catch(() => caches.match(e.request))
   )
