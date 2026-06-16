@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { loadProfile, saveProfile, loadLogs, saveLog, saveAllLogs, getDeviceId } from "./db.js";
 
 const C = {
   bg: "#EDE9E3", bgLight: "#F7F5F1", bgDark: "#2D3B2E",
@@ -827,29 +828,67 @@ const TABS=[{id:"dashboard",label:"今日",icon:Icon.dashboard},{id:"log",label:
 // ── ROOT ──
 export default function App() {
   const [tab,setTab]=useState("dashboard");
-  const [logs,setLogs]=useState(()=>{ try{return JSON.parse(localStorage.getItem("bcd_logs")||"{}");} catch(e){return{};} });
-  const [profile,setProfile]=useState(()=>{ try{return JSON.parse(localStorage.getItem("bcd_profile")||"null");} catch(e){return null;} });
+  const [logs,setLogs]=useState({});
+  const [profile,setProfile]=useState(null);
   const [toast,setToast]=useState("");
+  const [loading,setLoading]=useState(true);
+  const deviceId = useRef(getDeviceId());
+
+  // 啟動時從 Supabase 載入資料
+  useEffect(()=>{
+    const init = async () => {
+      setLoading(true);
+      try {
+        const p = await loadProfile(deviceId.current);
+        if (p) {
+          setProfile(p);
+          const l = await loadLogs(deviceId.current);
+          setLogs(l);
+        }
+      } catch(e) { console.error("init error", e); }
+      setLoading(false);
+    };
+    init();
+  }, []);
+
   const showToast=(msg)=>{ setToast(msg); setTimeout(()=>setToast(""),2500); };
 
-  const saveLog=(date,entry)=>{
-    setLogs(p=>{ const n={...p,[date]:entry}; try{localStorage.setItem("bcd_logs",JSON.stringify(n));}catch(e){} return n; });
+  const handleSaveLog=async(date,entry)=>{
+    setLogs(p=>({...p,[date]:entry}));
     setTimeout(()=>setTab("dashboard"),600);
+    try { await saveLog(deviceId.current, date, entry); } catch(e) { showToast("⚠ 儲存失敗，請檢查網路"); }
   };
-  const saveProfile=(p)=>{
-    setProfile(p); try{localStorage.setItem("bcd_profile",JSON.stringify(p));}catch(e){} setTab("dashboard");
+
+  const handleSaveProfile=async(p)=>{
+    setProfile(p);
+    setTab("dashboard");
+    try { await saveProfile(deviceId.current, p); showToast("個人資料已儲存 ✓"); } catch(e) { showToast("⚠ 儲存失敗，請檢查網路"); }
   };
-  const importLogs=(newLogs)=>{
-    setLogs(newLogs); try{localStorage.setItem("bcd_logs",JSON.stringify(newLogs));}catch(e){}
+
+  const importLogs=async(newLogs)=>{
+    setLogs(newLogs);
+    showToast("匯入中，請稍候…");
+    try { await saveAllLogs(deviceId.current, newLogs); showToast("匯入完成 ✓"); } catch(e) { showToast("⚠ 匯入失敗，請檢查網路"); }
   };
 
   const noNav = tab==="import" || tab==="profile" || !profile;
+
+  if (loading) {
+    return (
+      <div style={{ ...s.app, display:"flex", alignItems:"center", justifyContent:"center", minHeight:"100vh" }}>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontFamily:"'Cormorant Garamond','Noto Serif TC',serif", fontSize:28, fontWeight:300, color:C.textMain, marginBottom:12 }}>身形日誌</div>
+          <div style={{ fontSize:11, color:C.textSub, letterSpacing:"0.14em" }}>載入中…</div>
+        </div>
+      </div>
+    );
+  }
 
   if (!profile || tab==="profile") {
     return (
       <div style={s.app}>
         <div style={s.header}><span style={s.brand}>身形日誌</span></div>
-        <ProfileSetup onSave={saveProfile}/>
+        <ProfileSetup onSave={handleSaveProfile}/>
         <Toast msg={toast}/>
       </div>
     );
@@ -865,7 +904,7 @@ export default function App() {
         </div>
       </div>
       {tab==="dashboard"&&<Dashboard profile={profile} logs={logs} onNav={setTab}/>}
-      {tab==="log"&&<LogView profile={profile} logs={logs} onSave={saveLog} showToast={showToast}/>}
+      {tab==="log"&&<LogView profile={profile} logs={logs} onSave={handleSaveLog} showToast={showToast}/>}
       {tab==="history"&&<HistoryView profile={profile} logs={logs}/>}
       {tab==="weekly"&&<WeeklyView profile={profile} logs={logs}/>}
       {tab==="monthly"&&<MonthlyView profile={profile} logs={logs}/>}
