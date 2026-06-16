@@ -112,70 +112,10 @@ function Toast({ msg }) {
   return <div style={{ position:"fixed", bottom:88, left:"50%", transform:"translateX(-50%)", background:C.textMain, color:C.bg, fontSize:12, letterSpacing:"0.1em", padding:"12px 24px", whiteSpace:"nowrap", zIndex:200, pointerEvents:"none" }}>{msg}</div>;
 }
 
-// ── AI 飲食估算 ──
-async function estimateCaloriesWithAI(userText) {
-  const prompt = `你是一位專業的台灣營養師，熟悉台灣所有連鎖便利商店（7-11、全家、萊爾富）、速食店（麥當勞、肯德基、摩斯漢堡、漢堡王）、連鎖餐廳（麥味登、早安美芝城、爭鮮、鬍鬚張等）及台灣常見小吃的營養資訊。
-
-用戶輸入：「${userText}」
-
-請分析並列出每一個食物項目的熱量與主要營養素。
-規則：
-- 如果是知名連鎖品牌的特定商品，使用官方或公認的營養數據
-- 如果是描述性食物（如「炸雞腿便當」），拆解每個組成部分分別估算
-- 份量不明確時，使用台灣常見的一般份量
-
-重要：只回傳純 JSON，不含任何說明文字或 markdown。格式：
-{"items":[{"name":"食物名稱","portion":"份量","calories":數字,"protein":蛋白質g,"fat":脂肪g,"carbs":碳水g}],"total":總熱量,"note":"備註說明"}`;
-
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1000,
-      messages: [{ role: "user", content: prompt }]
-    })
-  });
-  const responseText = await res.text();
-  if (!res.ok) {
-    let e = res.statusText;
-    try { const j = JSON.parse(responseText); e = j.error?.message || e; } catch(_) {}
-    throw new Error("API錯誤：" + e);
-  }
-  let data;
-  try { data = JSON.parse(responseText); } catch(_) { throw new Error("回應解析失敗"); }
-  const raw = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
-  const cleaned = raw.replace(/```json/g,"").replace(/```/g,"").trim();
-  const match = cleaned.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("找不到 JSON，原始：" + cleaned.slice(0,100));
-  return JSON.parse(match[0]);
-}
-
+// ── 飲食記錄貼上區塊 ──
 function AIFoodEstimator({ onResult, showToast }) {
-  const [tab, setTab] = useState("ai"); // "ai" | "paste"
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState("");
   const [jsonInput, setJsonInput] = useState("");
   const [parseErr, setParseErr] = useState("");
-
-  const estimate = async () => {
-    if (!input.trim()) { showToast("請輸入食物描述"); return; }
-    setLoading(true); setError(""); setResult(null);
-    try {
-      const res = await estimateCaloriesWithAI(input);
-      setResult(res);
-    } catch(e) { setError(e.message); }
-    setLoading(false);
-  };
-
-  const addAll = () => {
-    if (!result) return;
-    onResult(result);
-    showToast("已加入 " + result.items.length + " 項，共 " + result.total + " kcal");
-    setInput(""); setResult(null);
-  };
 
   const applyJson = () => {
     setParseErr("");
@@ -194,70 +134,24 @@ function AIFoodEstimator({ onResult, showToast }) {
   return (
     <div style={{ marginBottom:20 }}>
       <div style={s.aiCard}>
-        {/* Tab 切換 */}
-        <div style={{ display:"flex", gap:0, marginBottom:16, borderBottom:`0.5px solid ${C.line}` }}>
-          {[["ai","🤖 AI 估算"],["paste","📋 貼上回覆"]].map(([id,label])=>(
-            <button key={id} onClick={()=>{ setTab(id); setResult(null); setError(""); }} style={{ flex:1, background:"none", border:"none", borderBottom:`1.5px solid ${tab===id?C.textMain:"transparent"}`, padding:"8px 0", fontSize:10, letterSpacing:"0.12em", color:tab===id?C.textMain:C.textSub, cursor:"pointer", fontFamily:"inherit", fontWeight:300, textTransform:"uppercase" }}>{label}</button>
-          ))}
+        <div style={{ fontSize:10, letterSpacing:"0.16em", color:C.textSub, textTransform:"uppercase", marginBottom:12 }}>
+          📋 食物熱量估算
         </div>
-
-        {/* AI 估算模式 */}
-        {tab==="ai" && <>
-          <div style={{ fontSize:11, color:C.textSub, lineHeight:1.7, marginBottom:10 }}>
-            輸入店名＋品項或口述內容，AI 自動估算
-          </div>
-          <div style={{ fontSize:10, color:C.line, lineHeight:1.9, marginBottom:12 }}>
-            例：7-11 御飯糰鮪魚、茶葉蛋{"\n"}
-            例：麥當勞 大麥克套餐加大{"\n"}
-            例：炸雞腿便當，含炸雞腿、青菜、油豆腐兩塊
-          </div>
-          <textarea style={{ ...s.textarea, minHeight:72 }} value={input} onChange={e=>setInput(e.target.value)} placeholder="輸入食物描述…"/>
-          <button style={{ ...s.btn, marginTop:8, opacity:loading?0.6:1 }} onClick={estimate} disabled={loading}>
-            {loading ? "AI 估算中…" : "估算熱量"}
-          </button>
-          {error && <div style={{ fontSize:11, color:C.accent, marginTop:10, lineHeight:1.6 }}>⚠ {error}</div>}
-          {result && (
-            <div style={{ marginTop:16 }}>
-              <div style={{ fontSize:10, letterSpacing:"0.14em", color:C.textSub, textTransform:"uppercase", marginBottom:12 }}>估算結果</div>
-              {result.items.map((item,i)=>(
-                <div key={i} style={{ ...s.listRow, flexDirection:"column", alignItems:"flex-start", gap:3 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", width:"100%" }}>
-                    <span style={{ fontSize:13 }}>{item.name}</span>
-                    <span style={{ fontSize:13, fontFamily:"'Cormorant Garamond','Noto Serif TC',serif" }}>{item.calories} kcal</span>
-                  </div>
-                  <div style={{ fontSize:11, color:C.textSub }}>
-                    {item.portion}{item.protein!=null?` · 蛋白質 ${item.protein}g`:""}{item.fat!=null?` · 脂肪 ${item.fat}g`:""}{item.carbs!=null?` · 碳水 ${item.carbs}g`:""}
-                  </div>
-                </div>
-              ))}
-              <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0 0", fontSize:11, color:C.textSub, textTransform:"uppercase", letterSpacing:"0.1em", borderTop:`0.5px solid ${C.line}`, marginTop:4 }}>
-                <span>總計</span>
-                <span style={{ fontFamily:"'Cormorant Garamond','Noto Serif TC',serif", fontSize:22, color:C.textMain }}>{result.total} kcal</span>
-              </div>
-              {result.note && <div style={{ fontSize:11, color:C.textSub, marginTop:8, lineHeight:1.7 }}>＊{result.note}</div>}
-              <button style={{ ...s.btn, marginTop:14 }} onClick={addAll}>加入飲食清單</button>
-              <button style={{ ...s.btnGhost, marginTop:8 }} onClick={()=>setResult(null)}>重新估算</button>
-            </div>
-          )}
-        </>}
-
-        {/* 貼上 Claude 回覆模式（拍照食物） */}
-        {tab==="paste" && <>
-          <div style={{ fontSize:11, color:C.textSub, lineHeight:1.8, marginBottom:12 }}>
-            拍食物照片後傳給 Claude，請他回傳 JSON 格式的熱量分析，再貼到下方
-          </div>
-          <div style={{ background:C.bg, padding:"10px 12px", marginBottom:14, fontSize:10, color:C.textSub, lineHeight:1.8 }}>
-            對 Claude 說：{"\n"}「這是我的餐點，列出每項食物名稱與熱量，回傳純 JSON：{`{"items":[{"name":"名稱","portion":"份量","calories":數字}],"total":數字,"note":"備註"}`}」
-          </div>
-          <textarea
-            style={{ ...s.textarea, minHeight:120, fontSize:12, fontFamily:"monospace" }}
-            value={jsonInput}
-            onChange={e=>{ setJsonInput(e.target.value); setParseErr(""); }}
-            placeholder='{"items":[{"name":"雞胸肉","portion":"100g","calories":165}],"total":165,"note":"估算"}'
-          />
-          {parseErr && <div style={{ fontSize:11, color:C.accent, marginTop:6 }}>⚠ {parseErr}</div>}
-          <button style={{ ...s.btn, marginTop:12 }} onClick={applyJson}>加入飲食清單</button>
-        </>}
+        <div style={{ fontSize:11, color:C.textSub, lineHeight:1.8, marginBottom:10 }}>
+          拍食物照片傳給 Claude，請他估算熱量後複製 JSON 貼到下方
+        </div>
+        <div style={{ background:C.bg, border:`0.5px solid ${C.line}`, padding:"10px 12px", marginBottom:14, fontSize:10, color:C.textSub, lineHeight:1.9 }}>
+          對 Claude 說：{"
+"}「這是我的餐點，列出每項食物與熱量，回傳純 JSON：{`{"items":[{"name":"名稱","portion":"份量","calories":數字}],"total":數字,"note":"備註"}`}」
+        </div>
+        <textarea
+          style={{ ...s.textarea, minHeight:120, fontSize:12, fontFamily:"monospace" }}
+          value={jsonInput}
+          onChange={e=>{ setJsonInput(e.target.value); setParseErr(""); }}
+          placeholder='{"items":[{"name":"雞胸肉","portion":"100g","calories":165}],"total":165,"note":"估算"}'
+        />
+        {parseErr && <div style={{ fontSize:11, color:C.accent, marginTop:6 }}>⚠ {parseErr}</div>}
+        <button style={{ ...s.btn, marginTop:12 }} onClick={applyJson}>加入飲食清單</button>
       </div>
     </div>
   );
