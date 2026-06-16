@@ -151,10 +151,13 @@ async function estimateCaloriesWithAI(userText) {
 }
 
 function AIFoodEstimator({ onResult, showToast }) {
+  const [tab, setTab] = useState("ai"); // "ai" | "paste"
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [jsonInput, setJsonInput] = useState("");
+  const [parseErr, setParseErr] = useState("");
 
   const estimate = async () => {
     if (!input.trim()) { showToast("請輸入食物描述"); return; }
@@ -162,9 +165,7 @@ function AIFoodEstimator({ onResult, showToast }) {
     try {
       const res = await estimateCaloriesWithAI(input);
       setResult(res);
-    } catch(e) {
-      setError(e.message);
-    }
+    } catch(e) { setError(e.message); }
     setLoading(false);
   };
 
@@ -175,60 +176,87 @@ function AIFoodEstimator({ onResult, showToast }) {
     setInput(""); setResult(null);
   };
 
+  const applyJson = () => {
+    setParseErr("");
+    try {
+      const cleaned = jsonInput.replace(/```json/g,"").replace(/```/g,"").trim();
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("找不到 JSON 內容");
+      const res = JSON.parse(match[0]);
+      if (!Array.isArray(res.items)) throw new Error("格式錯誤");
+      onResult(res);
+      showToast("已加入 " + res.items.length + " 項，共 " + res.total + " kcal");
+      setJsonInput("");
+    } catch(e) { setParseErr(e.message); }
+  };
+
   return (
     <div style={{ marginBottom:20 }}>
       <div style={s.aiCard}>
-        <div style={{ fontSize:10, letterSpacing:"0.16em", color:C.textSub, textTransform:"uppercase", marginBottom:12 }}>
-          🤖 AI 飲食估算
+        {/* Tab 切換 */}
+        <div style={{ display:"flex", gap:0, marginBottom:16, borderBottom:`0.5px solid ${C.line}` }}>
+          {[["ai","🤖 AI 估算"],["paste","📋 貼上回覆"]].map(([id,label])=>(
+            <button key={id} onClick={()=>{ setTab(id); setResult(null); setError(""); }} style={{ flex:1, background:"none", border:"none", borderBottom:`1.5px solid ${tab===id?C.textMain:"transparent"}`, padding:"8px 0", fontSize:10, letterSpacing:"0.12em", color:tab===id?C.textMain:C.textSub, cursor:"pointer", fontFamily:"inherit", fontWeight:300, textTransform:"uppercase" }}>{label}</button>
+          ))}
         </div>
-        <div style={{ fontSize:11, color:C.textSub, lineHeight:1.7, marginBottom:12 }}>
-          輸入店名＋品項，或口述內容，AI 自動估算熱量與營養素
-        </div>
-        <div style={{ fontSize:10, color:C.line, lineHeight:1.8, marginBottom:14 }}>
-          例：「7-11 御飯糰鮪魚、茶葉蛋、光泉鮮奶」{"
-"}
-          例：「麥當勞 大麥克套餐加大」{"
-"}
-          例：「炸雞腿便當，炸雞腿、青菜、油豆腐兩塊、白飯」
-        </div>
-        <textarea
-          style={{ ...s.textarea, minHeight:80 }}
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          placeholder="輸入食物描述…"
-        />
-        <button style={{ ...s.btn, marginTop:8, opacity: loading?0.6:1 }} onClick={estimate} disabled={loading}>
-          {loading ? "AI 估算中…" : "估算熱量"}
-        </button>
-        {error && <div style={{ fontSize:11, color:C.accent, marginTop:10, lineHeight:1.6 }}>⚠ {error}</div>}
-        {result && (
-          <div style={{ marginTop:16 }}>
-            <div style={{ fontSize:10, letterSpacing:"0.14em", color:C.textSub, textTransform:"uppercase", marginBottom:12 }}>估算結果</div>
-            {result.items.map((item, i) => (
-              <div key={i} style={{ ...s.listRow, flexDirection:"column", alignItems:"flex-start", gap:4 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", width:"100%" }}>
-                  <span style={{ fontSize:13 }}>{item.name}</span>
-                  <span style={{ fontSize:13, fontFamily:"'Cormorant Garamond','Noto Serif TC',serif" }}>{item.calories} kcal</span>
-                </div>
-                <div style={{ fontSize:11, color:C.textSub }}>
-                  {item.portion}
-                  {item.protein != null && ` · 蛋白質 ${item.protein}g`}
-                  {item.fat != null && ` · 脂肪 ${item.fat}g`}
-                  {item.carbs != null && ` · 碳水 ${item.carbs}g`}
-                </div>
-              </div>
-            ))}
-            <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0 0", fontSize:11, color:C.textSub, textTransform:"uppercase", letterSpacing:"0.1em", borderTop:`0.5px solid ${C.line}`, marginTop:4 }}>
-              <span>總計</span>
-              <span style={{ fontFamily:"'Cormorant Garamond','Noto Serif TC',serif", fontSize:22, color:C.textMain }}>{result.total} kcal</span>
-            </div>
-            {result.note && <div style={{ fontSize:11, color:C.textSub, marginTop:8, lineHeight:1.7 }}>＊{result.note}</div>}
-            <div style={{ display:"flex", gap:8, marginTop:14 }}>
-              <button style={s.btn} onClick={addAll}>加入飲食清單</button>
-            </div>
-            <button style={{ ...s.btnGhost, marginTop:8 }} onClick={()=>setResult(null)}>重新估算</button>
+
+        {/* AI 估算模式 */}
+        {tab==="ai" && <>
+          <div style={{ fontSize:11, color:C.textSub, lineHeight:1.7, marginBottom:10 }}>
+            輸入店名＋品項或口述內容，AI 自動估算
           </div>
-        )}
+          <div style={{ fontSize:10, color:C.line, lineHeight:1.9, marginBottom:12 }}>
+            例：7-11 御飯糰鮪魚、茶葉蛋{"\n"}
+            例：麥當勞 大麥克套餐加大{"\n"}
+            例：炸雞腿便當，含炸雞腿、青菜、油豆腐兩塊
+          </div>
+          <textarea style={{ ...s.textarea, minHeight:72 }} value={input} onChange={e=>setInput(e.target.value)} placeholder="輸入食物描述…"/>
+          <button style={{ ...s.btn, marginTop:8, opacity:loading?0.6:1 }} onClick={estimate} disabled={loading}>
+            {loading ? "AI 估算中…" : "估算熱量"}
+          </button>
+          {error && <div style={{ fontSize:11, color:C.accent, marginTop:10, lineHeight:1.6 }}>⚠ {error}</div>}
+          {result && (
+            <div style={{ marginTop:16 }}>
+              <div style={{ fontSize:10, letterSpacing:"0.14em", color:C.textSub, textTransform:"uppercase", marginBottom:12 }}>估算結果</div>
+              {result.items.map((item,i)=>(
+                <div key={i} style={{ ...s.listRow, flexDirection:"column", alignItems:"flex-start", gap:3 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", width:"100%" }}>
+                    <span style={{ fontSize:13 }}>{item.name}</span>
+                    <span style={{ fontSize:13, fontFamily:"'Cormorant Garamond','Noto Serif TC',serif" }}>{item.calories} kcal</span>
+                  </div>
+                  <div style={{ fontSize:11, color:C.textSub }}>
+                    {item.portion}{item.protein!=null?` · 蛋白質 ${item.protein}g`:""}{item.fat!=null?` · 脂肪 ${item.fat}g`:""}{item.carbs!=null?` · 碳水 ${item.carbs}g`:""}
+                  </div>
+                </div>
+              ))}
+              <div style={{ display:"flex", justifyContent:"space-between", padding:"12px 0 0", fontSize:11, color:C.textSub, textTransform:"uppercase", letterSpacing:"0.1em", borderTop:`0.5px solid ${C.line}`, marginTop:4 }}>
+                <span>總計</span>
+                <span style={{ fontFamily:"'Cormorant Garamond','Noto Serif TC',serif", fontSize:22, color:C.textMain }}>{result.total} kcal</span>
+              </div>
+              {result.note && <div style={{ fontSize:11, color:C.textSub, marginTop:8, lineHeight:1.7 }}>＊{result.note}</div>}
+              <button style={{ ...s.btn, marginTop:14 }} onClick={addAll}>加入飲食清單</button>
+              <button style={{ ...s.btnGhost, marginTop:8 }} onClick={()=>setResult(null)}>重新估算</button>
+            </div>
+          )}
+        </>}
+
+        {/* 貼上 Claude 回覆模式（拍照食物） */}
+        {tab==="paste" && <>
+          <div style={{ fontSize:11, color:C.textSub, lineHeight:1.8, marginBottom:12 }}>
+            拍食物照片後傳給 Claude，請他回傳 JSON 格式的熱量分析，再貼到下方
+          </div>
+          <div style={{ background:C.bg, padding:"10px 12px", marginBottom:14, fontSize:10, color:C.textSub, lineHeight:1.8 }}>
+            對 Claude 說：{"\n"}「這是我的餐點，列出每項食物名稱與熱量，回傳純 JSON：{`{"items":[{"name":"名稱","portion":"份量","calories":數字}],"total":數字,"note":"備註"}`}」
+          </div>
+          <textarea
+            style={{ ...s.textarea, minHeight:120, fontSize:12, fontFamily:"monospace" }}
+            value={jsonInput}
+            onChange={e=>{ setJsonInput(e.target.value); setParseErr(""); }}
+            placeholder='{"items":[{"name":"雞胸肉","portion":"100g","calories":165}],"total":165,"note":"估算"}'
+          />
+          {parseErr && <div style={{ fontSize:11, color:C.accent, marginTop:6 }}>⚠ {parseErr}</div>}
+          <button style={{ ...s.btn, marginTop:12 }} onClick={applyJson}>加入飲食清單</button>
+        </>}
       </div>
     </div>
   );
@@ -330,10 +358,42 @@ function ProfileSetup({ onSave }) {
 }
 
 // ── DASHBOARD ──
+// ── 7-DAY MINI CHART ──
+function MiniChart({ logs, dataKey, label, unit, color }) {
+  const days = Array.from({length:7},(_,i)=>{ const d=new Date(); d.setDate(d.getDate()-6+i); return d.toISOString().slice(0,10); });
+  const values = days.map(d => logs[d]?.[dataKey] ? parseFloat(logs[d][dataKey]) : null);
+  const valid = values.filter(Boolean);
+  if (!valid.length) return null;
+  const minV = Math.min(...valid) - (Math.min(...valid)*0.01);
+  const maxV = Math.max(...valid) + (Math.max(...valid)*0.01);
+  const range = maxV - minV || 1;
+  const today = getToday();
+  return (
+    <div style={{ marginBottom:20 }}>
+      <div style={{ fontSize:10, letterSpacing:"0.15em", color:C.textSub, textTransform:"uppercase", marginBottom:10 }}>{label}</div>
+      <div style={{ display:"flex", alignItems:"flex-end", gap:4, height:60 }}>
+        {days.map((d,i)=>{ const v=values[i]; const pct=v?((v-minV)/range)*100:0; return (
+          <div key={d} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:2, height:"100%", justifyContent:"flex-end" }}>
+            <span style={{ fontSize:8, color:C.textSub }}>{v?v.toFixed(1):""}</span>
+            <div style={{ width:"100%", background:color||C.textMain, opacity:d===today?0.8:0.2, height:`${Math.max(pct,3)}%`, minHeight:2 }}/>
+            <span style={{ fontSize:8, color:C.textSub }}>{d.slice(5)}</span>
+          </div>
+        ); })}
+      </div>
+      <div style={{ display:"flex", justifyContent:"space-between", fontSize:9, color:C.line, marginTop:4 }}>
+        <span>min {Math.min(...valid).toFixed(1)}{unit}</span>
+        <span>max {Math.max(...valid).toFixed(1)}{unit}</span>
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({ profile, logs, onNav }) {
   const today = getToday(); const todayLog = logs[today];
-  const getLatestWeight = () => { const keys=Object.keys(logs).sort().reverse(); for(const k of keys){if(logs[k]?.weight)return parseFloat(logs[k].weight);} return parseFloat(profile.weight)||0; };
-  const latestW = getLatestWeight();
+  const getLatest = (key) => { const keys=Object.keys(logs).sort().reverse(); for(const k of keys){if(logs[k]?.[key]) return parseFloat(logs[k][key]);} return null; };
+  const latestW = getLatest("weight") || parseFloat(profile.weight) || 0;
+  const latestBF = getLatest("bodyfat");
+  const latestLM = getLatest("leanMass");
   const bmr = calcBMR(latestW, parseFloat(profile.height), parseInt(profile.age), profile.gender);
   const factor = ACTIVITY_LEVELS[profile.activityLevel].factor;
   const tdee = calcTDEE(bmr, factor);
@@ -349,8 +409,22 @@ function Dashboard({ profile, logs, onNav }) {
   return (
     <div style={s.main}>
       <p style={s.secTitle}>{profile.name ? profile.name + " · " : ""}今日概況</p>
-      <div style={s.heroNum}>{latestW.toFixed(1)}</div>
-      <div style={s.heroUnit}>kg · 最新體重</div>
+
+      {/* 三項身體數據 */}
+      <div style={s.statsRow}>
+        <div style={s.statCell}>
+          <div style={s.statLabel}>體重</div>
+          <div style={s.statVal}>{latestW.toFixed(1)}<span style={s.statUnit}>kg</span></div>
+        </div>
+        <div style={{...s.statCell, paddingLeft:12}}>
+          <div style={s.statLabel}>體脂率</div>
+          <div style={s.statVal}>{latestBF ? latestBF.toFixed(1) : "—"}<span style={s.statUnit}>{latestBF?"%":""}</span></div>
+        </div>
+        <div style={{...s.statCell, paddingLeft:12}}>
+          <div style={s.statLabel}>肌肉量</div>
+          <div style={s.statVal}>{latestLM ? latestLM.toFixed(1) : "—"}<span style={s.statUnit}>{latestLM?"kg":""}</span></div>
+        </div>
+      </div>
       <hr style={s.divider}/>
 
       {/* 今日目標狀態 */}
@@ -376,6 +450,13 @@ function Dashboard({ profile, logs, onNav }) {
           </div>
         ))}
       </div>
+      <hr style={s.divider}/>
+
+      {/* 近七日趨勢圖 */}
+      <div style={{ fontSize:11, letterSpacing:"0.12em", color:C.textSub, textTransform:"uppercase", marginBottom:18 }}>近七日趨勢</div>
+      <MiniChart logs={logs} dataKey="weight" label="體重" unit="kg" />
+      <MiniChart logs={logs} dataKey="bodyfat" label="體脂率" unit="%" color="#8B6B61" />
+      <MiniChart logs={logs} dataKey="leanMass" label="肌肉量" unit="kg" color="#4A6741" />
       <hr style={s.divider}/>
 
       {/* 代謝數據 */}
