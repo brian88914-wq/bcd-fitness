@@ -11,6 +11,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 // Register PWA service worker
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/bcd-fitness/sw.js').catch(() => {})
+    
   })
 }
